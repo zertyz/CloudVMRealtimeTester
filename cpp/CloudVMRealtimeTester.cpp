@@ -221,12 +221,27 @@ void outputResults(RealTimeMeasurements *worsts, RealTimeMeasurements *averages,
  * For more docs, please see: ...
  *
 */
-int main() {
+int main(int argc, char *argv[]) {
 
 	RealTimeMeasurements         *worsts;
 	RealTimeMeasurements         *averages;
 	RealTimeMeasurements         *numberOfMeasurements;
 	DistributionTimeMeasurements *distributions;
+
+	if (argc < 2) {
+		cout << "CloudVMRealtimeTester: A tool to gather statistics and quantify the reactiveness of Virtual Machines, " << endl;
+ 		cout << "reporting if they may be trusted to execute hard, firm or soft Real-Time applications." << endl;
+ 		cout << endl;
+ 		cout << "Usage:" << endl;
+		cout << "\tCloudVMRealtimeTester <seconds to measure>" << endl;
+		cout << "where:" << endl;
+		cout << "\t'seconds to measure' is the number of seconds to do busy waiting measurements" << endl;
+ 		cout << endl;
+ 		return 1;
+	}
+
+	unsigned long long numberOfSecondsToMeasure = atoi(argv[1]);
+
 
 	cout << "Warming up for 5 seconds..." << endl << flush;
 	worsts               = new RealTimeMeasurements();
@@ -239,7 +254,6 @@ int main() {
 	delete numberOfMeasurements;
 	delete distributions;
 
-	unsigned long long numberOfSecondsToMeasure = /* 3600ll * */ 24ll;
 	cout << "Performing real measurements for up to " << numberOfSecondsToMeasure << " seconds or until a SIGTERM is received..." << endl << flush;
 	worsts               = new RealTimeMeasurements();
 	averages             = new RealTimeMeasurements();
@@ -251,4 +265,6 @@ int main() {
 	delete averages;
 	delete numberOfMeasurements;
 	delete distributions;
+
+	return 0;
 }
