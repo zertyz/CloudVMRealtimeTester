@@ -35,9 +35,9 @@ struct RealTimeMeasurements {
 
 };
 
-constexpr unsigned MAX_HANG_SECONDS                    = 3600;			// we are able to compute delays of up to this quantity, in seconds
-constexpr unsigned DISTRIBUTION_TIME_RESOLUTION_FACTOR = 1'000 * 1'000;	// from ns to whatever resolution. 1000 * 1000 leads to ms time resolution
-constexpr unsigned GAUSSIAN_MS_SLOTS                   = (1'000*1'000*1'000/DISTRIBUTION_TIME_RESOLUTION_FACTOR)*MAX_HANG_SECONDS; // ns / resolution * max_hang_secs
+constexpr unsigned long long MAX_HANG_SECONDS                    = 3600;			// we are able to compute delays of up to this quantity, in seconds
+constexpr unsigned long long DISTRIBUTION_TIME_RESOLUTION_FACTOR = 1'000 * 1'000;	// from ns to whatever resolution. 1000 * 1000 leads to ms time resolution
+constexpr unsigned long long GAUSSIAN_MS_SLOTS                   = (1'000*1'000*1'000/DISTRIBUTION_TIME_RESOLUTION_FACTOR)*MAX_HANG_SECONDS; // ns / resolution * max_hang_secs
 /** This struct is used to track the distribution of measured values */
 struct DistributionTimeMeasurements {
 
@@ -81,10 +81,10 @@ void traverseArray(unsigned long long *array, unsigned nElements, void (&callbac
 		}                                                                     \
 	}                                                                         \
 
-void realTimeTestLoop(RealTimeMeasurements         &worsts,
-	                  RealTimeMeasurements         &averages,
-	                  RealTimeMeasurements         &numberOfMeasurements,
-	                  DistributionTimeMeasurements &distributions,
+void realTimeTestLoop(RealTimeMeasurements         *worsts,
+	                  RealTimeMeasurements         *averages,
+	                  RealTimeMeasurements         *numberOfMeasurements,
+	                  DistributionTimeMeasurements *distributions,
 	                  unsigned long long            measurementDurationNS) {
 	unsigned long long startTimeNS   = TimeMeasurements::getMonotonicRealTimeNS();
 	unsigned long long lastTimeNS    = startTimeNS;
@@ -107,12 +107,12 @@ void realTimeTestLoop(RealTimeMeasurements         &worsts,
 
 #define COMPUTE_MEASUREMENTS(_var)                      \
 		/* Compute worst measurement */                 \
-		if (elapsedTimeNS > worsts._var) {              \
-			worsts._var = elapsedTimeNS;                \
+		if (elapsedTimeNS > worsts->_var) {             \
+			worsts->_var = elapsedTimeNS;               \
 		}                                               \
 		/* Compute averages & number of measurements */ \
-		averages._var             += elapsedTimeNS;     \
-		numberOfMeasurements._var += 1;                 \
+		averages->_var             += elapsedTimeNS;    \
+		numberOfMeasurements->_var += 1;                \
 
 		COMPUTE_MEASUREMENTS(minutesOfAllHours[minuteOfHour]);
 		COMPUTE_MEASUREMENTS(minutesOfEachHour[hourOfDay][minuteOfHour]);
@@ -129,57 +129,58 @@ void realTimeTestLoop(RealTimeMeasurements         &worsts,
 		// compute distribution measurements
 		////////////////////////////////////
 
-		unsigned scaledElapsedTime = elapsedTimeNS/DISTRIBUTION_TIME_RESOLUTION_FACTOR;
+		unsigned scaledElapsedTime = (unsigned)(elapsedTimeNS/DISTRIBUTION_TIME_RESOLUTION_FACTOR);
 		if (scaledElapsedTime >= GAUSSIAN_MS_SLOTS) {
-			distributions.nGaussianMSOverflows++;
+			distributions->nGaussianMSOverflows++;
 		} else {
-			distributions.gaussianMS[scaledElapsedTime]++;
+			distributions->gaussianMS[scaledElapsedTime]++;
 		}
+
 
 		lastTimeNS = currentTimeNS;
 
 	} while ((currentTimeNS - startTimeNS) < measurementDurationNS);
 
 	// compute averages
-	TRAVERSE1D(averages.minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   element /= numberOfMeasurements.minutesOfAllHours[x]);
-	TRAVERSE2D(averages.minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR,                 element /= numberOfMeasurements.minutesOfEachHour[x][y]);
-	TRAVERSE3D(averages.minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, element /= numberOfMeasurements.minutesOfEachHourOfEachDay[x][y][z]);
-	TRAVERSE1D(averages.hourOfAllDays,              HOURS_IN_A_DAY,                                       element /= numberOfMeasurements.hourOfAllDays[x]);
-	TRAVERSE2D(averages.hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY,                     element /= numberOfMeasurements.hourOfEachDay[x][y]);
-	TRAVERSE1D(averages.dayOfAllWeeks,              DAYS_IN_A_WEEK,                                       element /= numberOfMeasurements.dayOfAllWeeks[x]);
-	TRAVERSE2D(averages.dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     element /= numberOfMeasurements.dayOfEachWeek[x][y]);
-	TRAVERSE1D(averages.dayOfTheMonth,              DAYS_IN_A_MONTH,                                      element /= numberOfMeasurements.dayOfTheMonth[x]);
+	TRAVERSE1D(averages->minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   auto n = numberOfMeasurements->minutesOfAllHours[x];                if (n > 0) element /= n);
+	TRAVERSE2D(averages->minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR,                 auto n = numberOfMeasurements->minutesOfEachHour[x][y];             if (n > 0) element /= n);
+	TRAVERSE3D(averages->minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, auto n = numberOfMeasurements->minutesOfEachHourOfEachDay[x][y][z]; if (n > 0) element /= n);
+	TRAVERSE1D(averages->hourOfAllDays,              HOURS_IN_A_DAY,                                       auto n = numberOfMeasurements->hourOfAllDays[x];                    if (n > 0) element /= n);
+	TRAVERSE2D(averages->hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY,                     auto n = numberOfMeasurements->hourOfEachDay[x][y];                 if (n > 0) element /= n);
+	TRAVERSE1D(averages->dayOfAllWeeks,              DAYS_IN_A_WEEK,                                       auto n = numberOfMeasurements->dayOfAllWeeks[x];                    if (n > 0) element /= n);
+	TRAVERSE2D(averages->dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     auto n = numberOfMeasurements->dayOfEachWeek[x][y];                 if (n > 0) element /= n);
+	TRAVERSE1D(averages->dayOfTheMonth,              DAYS_IN_A_MONTH,                                      auto n = numberOfMeasurements->dayOfTheMonth[x];                    if (n > 0) element /= n);
 
 }
 
-void outputRealTimeMeasurements(RealTimeMeasurements &measurements) {
+void outputRealTimeMeasurements(RealTimeMeasurements *measurements) {
 
 	cout << "\tminutesOfAllHours:\n";
-	TRAVERSE1D(averages.minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   cout << "\t\t" << x << ": " << element << "ns\n");
+	TRAVERSE1D(measurements->minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   cout << "\t\t" << x << ": " << element << "ns\n");
 
 	cout << "\tminutesOfEachHour:\n";
-	TRAVERSE2D(averages.minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR,                 cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
+	TRAVERSE2D(measurements->minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR,                 cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
 
 	cout << "\tminutesOfEachHourOfEachDay:\n";
-	TRAVERSE3D(averages.minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, cout << "\t\t(" << x << ", " << y << ", " << z << "): " << element << "ns\n");
+	TRAVERSE3D(measurements->minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, cout << "\t\t(" << x << ", " << y << ", " << z << "): " << element << "ns\n");
 
 	cout << "\thourOfAllDays:\n";
-	TRAVERSE1D(averages.hourOfAllDays,              HOURS_IN_A_DAY,                                       cout << "\t\t" << x << ": " << element << "ns\n");
+	TRAVERSE1D(measurements->hourOfAllDays,              HOURS_IN_A_DAY,                                       cout << "\t\t" << x << ": " << element << "ns\n");
 
 	cout << "\thourOfEachDay:\n";
-	TRAVERSE2D(averages.hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
+	TRAVERSE2D(measurements->hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
 
 	cout << "\tdayOfAllWeeks:\n";
-	TRAVERSE1D(averages.dayOfAllWeeks,              DAYS_IN_A_WEEK,                                       cout << "\t\t" << x << ": " << element << "ns\n");
+	TRAVERSE1D(measurements->dayOfAllWeeks,              DAYS_IN_A_WEEK,                                       cout << "\t\t" << x << ": " << element << "ns\n");
 
 	cout << "\tdayOfEachWeek:\n";
-	TRAVERSE2D(averages.dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
+	TRAVERSE2D(measurements->dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
 
 	cout << "\tdayOfTheMonth:\n";
-	TRAVERSE1D(averages.dayOfTheMonth,              DAYS_IN_A_MONTH,                                      cout << "\t\t" << x << ": " << element << "ns\n");
+	TRAVERSE1D(measurements->dayOfTheMonth,              DAYS_IN_A_MONTH,                                      cout << "\t\t" << x << ": " << element << "ns\n");
 }
 
-void outputResults(RealTimeMeasurements &worsts, RealTimeMeasurements &averages, DistributionTimeMeasurements &distributions) {
+void outputResults(RealTimeMeasurements *worsts, RealTimeMeasurements *averages, DistributionTimeMeasurements *distributions) {
 	cout << "Worst measurements:\n";
 	outputRealTimeMeasurements(worsts);
 	cout << "Average measurements:\n";
@@ -199,10 +200,10 @@ void outputResults(RealTimeMeasurements &worsts, RealTimeMeasurements &averages,
  *
 */
 int main() {
-	RealTimeMeasurements         worsts;
-	RealTimeMeasurements         averages;
-	RealTimeMeasurements         numberOfMeasurements;
-	DistributionTimeMeasurements distributions;
+	RealTimeMeasurements         *worsts               = new RealTimeMeasurements();
+	RealTimeMeasurements         *averages             = new RealTimeMeasurements();
+	RealTimeMeasurements         *numberOfMeasurements = new RealTimeMeasurements();
+	DistributionTimeMeasurements *distributions        = new DistributionTimeMeasurements();
 	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1000000000ll /* * 3600ll */ * 24ll);
 	outputResults(worsts, averages, distributions);
 }
