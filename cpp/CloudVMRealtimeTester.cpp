@@ -51,6 +51,19 @@ struct DistributionTimeMeasurements {
 
 };
 
+/** auxiliary function -- for each 'nElements' of 'array', iterate over it calling 'callback(&array[n])' */
+void traverseArray(unsigned long long *array, unsigned nElements, void (&callback) (unsigned long long &element, unsigned n)) {
+	for (unsigned n=0; n<nElements; n++) {
+		callback(array[n], n);
+	}
+}
+
+#define TRAVERSE1D(_array, _xElements, _expression) \
+	for (unsigned x=0; x<_xElements; x++) {         \
+		auto &element = _array[x];                  \
+		_expression;                                \
+	}                                               \
+
 void realTimeTestLoop(RealTimeMeasurements         &worsts,
 	                  RealTimeMeasurements         &averages,
 	                  RealTimeMeasurements         &numberOfMeasurements,
@@ -111,12 +124,17 @@ void realTimeTestLoop(RealTimeMeasurements         &worsts,
 	} while ((currentTimeNS - startTimeNS) < measurementDurationNS);
 
 	// compute averages
-	for (unsigned i=0; i<HOURS_IN_A_DAY; i++) {
-		averages.hourOfAllDays[i] /= numberOfMeasurements.hourOfAllDays[i];
-	}
+	TRAVERSE1D(averages.hourOfAllDays,     HOURS_IN_A_DAY,      element /= numberOfMeasurements.hourOfAllDays[x]);
+	TRAVERSE1D(averages.minutesOfAllHours, MINUTES_IN_AN_HOUR,  element /= numberOfMeasurements.minutesOfAllHours[x]);
+	// TRAVERSE(averages.minutesOfEachHour[HOURS_IN_A_DAY][MINUTES_IN_AN_HOUR];
+	// TRAVERSE(averages.minutesOfEachHourOfEachDay[DAYS_IN_A_MONTH][HOURS_IN_A_DAY][MINUTES_IN_AN_HOUR];
+	// TRAVERSE(averages.hourOfAllDays[HOURS_IN_A_DAY];
+	// TRAVERSE(averages.hourOfEachDay[DAYS_IN_A_MONTH][HOURS_IN_A_DAY];
+	// TRAVERSE(averages.dayOfAllWeeks[DAYS_IN_A_WEEK];
+	// TRAVERSE(averages.dayOfEachWeek[WEEKS_IN_A_MONTH][DAYS_IN_A_WEEK];
+	// TRAVERSE(averages.dayOfTheMonth[DAYS_IN_A_MONTH];
 
 }
-
 
 void outputRealTimeMeasurements(RealTimeMeasurements &measurements) {
 	cout << "\thourOfAllDays:\n";
