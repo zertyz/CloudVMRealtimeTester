@@ -31,8 +31,7 @@ struct RealTimeMeasurements {
 			, hourOfEachDay{0}
 			, dayOfAllWeeks{0}
 			, dayOfEachWeek{0}
-			, dayOfTheMonth{0}
-			, numberOfMeasurements(0) {}
+			, dayOfTheMonth{0} {}
 
 };
 
@@ -47,7 +46,7 @@ struct DistributionTimeMeasurements {
 
 	DistributionTimeMeasurements()
 			: gaussianMS{0}
-			: nGaussianMSOverflows(0) {}
+			, nGaussianMSOverflows(0) {}
 
 };
 
@@ -143,7 +142,7 @@ void outputRealTimeMeasurements(RealTimeMeasurements &measurements) {
 	}
 }
 
-void outputResults(RealTimeMeasurements &worsts, RealTimeMeasurements &averages) {
+void outputResults(RealTimeMeasurements &worsts, RealTimeMeasurements &averages, DistributionTimeMeasurements &distributions) {
 	cout << "Worst measurements:\n";
 	outputRealTimeMeasurements(worsts);
 	cout << "Average measurements:\n";
@@ -163,8 +162,10 @@ void outputResults(RealTimeMeasurements &worsts, RealTimeMeasurements &averages)
  *
 */
 int main() {
-	RealTimeMeasurements worsts;
-	RealTimeMeasurements averages;
-	realTimeTestLoop(worsts, averages, 1000000000ll /* * 3600ll */ * 24ll);
-	outputResults(worsts, averages);
+	RealTimeMeasurements         worsts;
+	RealTimeMeasurements         averages;
+	RealTimeMeasurements         numberOfMeasurements;
+	DistributionTimeMeasurements distributions;
+	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1000000000ll /* * 3600ll */ * 24ll);
+	outputResults(worsts, averages, distributions);
 }
