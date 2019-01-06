@@ -35,18 +35,18 @@ struct RealTimeMeasurements {
 
 };
 
-constexpr unsigned long long MAX_HANG_SECONDS                    = 3600;			// we are able to compute delays of up to this quantity, in seconds
-constexpr unsigned long long DISTRIBUTION_TIME_RESOLUTION_FACTOR = 1'000 * 1'000;	// from ns to whatever resolution. 1000 * 1000 leads to ms time resolution
+constexpr unsigned long long MAX_HANG_SECONDS                    = 36;		// we are able to compute delays of up to this quantity, in seconds
+constexpr unsigned long long DISTRIBUTION_TIME_RESOLUTION_FACTOR = 1'000;	// from ns to whatever resolution. 1000 * 1000 leads to ms time resolution
 constexpr unsigned long long GAUSSIAN_MS_SLOTS                   = (1'000*1'000*1'000/DISTRIBUTION_TIME_RESOLUTION_FACTOR)*MAX_HANG_SECONDS; // ns / resolution * max_hang_secs
 /** This struct is used to track the distribution of measured values */
 struct DistributionTimeMeasurements {
 
-	unsigned long long gaussianMS[GAUSSIAN_MS_SLOTS];
-	unsigned           nGaussianMSOverflows; 
+	unsigned long long gaussianTimes[GAUSSIAN_MS_SLOTS];
+	unsigned           ngaussianTimesOverflows;
 
 	DistributionTimeMeasurements()
-			: gaussianMS{0}
-			, nGaussianMSOverflows(0) {}
+			: gaussianTimes{0}
+			, ngaussianTimesOverflows(0) {}
 
 };
 
@@ -131,9 +131,9 @@ void realTimeTestLoop(RealTimeMeasurements         *worsts,
 
 		unsigned scaledElapsedTime = (unsigned)(elapsedTimeNS/DISTRIBUTION_TIME_RESOLUTION_FACTOR);
 		if (scaledElapsedTime >= GAUSSIAN_MS_SLOTS) {
-			distributions->nGaussianMSOverflows++;
+			distributions->ngaussianTimesOverflows++;
 		} else {
-			distributions->gaussianMS[scaledElapsedTime]++;
+			distributions->gaussianTimes[scaledElapsedTime]++;
 		}
 
 
@@ -155,36 +155,58 @@ void realTimeTestLoop(RealTimeMeasurements         *worsts,
 
 void outputRealTimeMeasurements(RealTimeMeasurements *measurements) {
 
-	cout << "\tminutesOfAllHours:\n";
-	TRAVERSE1D(measurements->minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   cout << "\t\t" << x << ": " << element << "ns\n");
+	cout << "\tminutesOfAllHours:" << endl;
+	TRAVERSE1D(measurements->minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   cout << "\t\t" << x << ": " << element << "ns" << endl);
 
-	cout << "\tminutesOfEachHour:\n";
-	TRAVERSE2D(measurements->minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR,                 cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
+	cout << "\tminutesOfEachHour:" << endl;
+	TRAVERSE2D(measurements->minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR,                 cout << "\t\t(" << x << ", " << y << "): " << element << "ns" << endl);
 
-	cout << "\tminutesOfEachHourOfEachDay:\n";
-	TRAVERSE3D(measurements->minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, cout << "\t\t(" << x << ", " << y << ", " << z << "): " << element << "ns\n");
+	cout << "\tminutesOfEachHourOfEachDay:" << endl;
+	TRAVERSE3D(measurements->minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, cout << "\t\t(" << x << ", " << y << ", " << z << "): " << element << "ns" << endl);
 
-	cout << "\thourOfAllDays:\n";
-	TRAVERSE1D(measurements->hourOfAllDays,              HOURS_IN_A_DAY,                                       cout << "\t\t" << x << ": " << element << "ns\n");
+	cout << "\thourOfAllDays:" << endl;
+	TRAVERSE1D(measurements->hourOfAllDays,              HOURS_IN_A_DAY,                                       cout << "\t\t" << x << ": " << element << "ns" << endl);
 
-	cout << "\thourOfEachDay:\n";
-	TRAVERSE2D(measurements->hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
+	cout << "\thourOfEachDay:" << endl;
+	TRAVERSE2D(measurements->hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns" << endl);
 
-	cout << "\tdayOfAllWeeks:\n";
-	TRAVERSE1D(measurements->dayOfAllWeeks,              DAYS_IN_A_WEEK,                                       cout << "\t\t" << x << ": " << element << "ns\n");
+	cout << "\tdayOfAllWeeks:" << endl;
+	TRAVERSE1D(measurements->dayOfAllWeeks,              DAYS_IN_A_WEEK,                                       cout << "\t\t" << x << ": " << element << "ns" << endl);
 
-	cout << "\tdayOfEachWeek:\n";
-	TRAVERSE2D(measurements->dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
+	cout << "\tdayOfEachWeek:" << endl;
+	TRAVERSE2D(measurements->dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns" << endl);
 
-	cout << "\tdayOfTheMonth:\n";
-	TRAVERSE1D(measurements->dayOfTheMonth,              DAYS_IN_A_MONTH,                                      cout << "\t\t" << x << ": " << element << "ns\n");
+	cout << "\tdayOfTheMonth:" << endl;
+	TRAVERSE1D(measurements->dayOfTheMonth,              DAYS_IN_A_MONTH,                                      cout << "\t\t" << x << ": " << element << "ns" << endl);
+}
+
+void outputDistributionMeasurements(DistributionTimeMeasurements *distributions) {
+	cout << "Gaussian Distribution per millisecond:" << endl;
+	cout << "\tngaussianTimesOverflows: " << distributions->ngaussianTimesOverflows << endl;
+
+	string gaussianTimeUnit = (DISTRIBUTION_TIME_RESOLUTION_FACTOR / 1000) == 1 ? "us" : "ms";
+
+	// find the last measured time in the gaussian distribution to avoid dumping a bunch of zeroes
+	unsigned lastGaussianSlot = GAUSSIAN_MS_SLOTS;
+	for (unsigned i=GAUSSIAN_MS_SLOTS-1; i>=0; i--) {
+		if (distributions->gaussianTimes[i] > 0) {
+			lastGaussianSlot = i+1;
+			break;
+		}
+	}
+
+	cout << "\tgaussianTimes:" << endl;
+	TRAVERSE1D(distributions->gaussianTimes, lastGaussianSlot, cout << "\t\t" << x << gaussianTimeUnit << ": " << element << endl);
 }
 
 void outputResults(RealTimeMeasurements *worsts, RealTimeMeasurements *averages, DistributionTimeMeasurements *distributions) {
-	cout << "Worst measurements:\n";
+
+	cout << "Worst measurements:" << endl;
 	outputRealTimeMeasurements(worsts);
-	cout << "Average measurements:\n";
+	cout << "Average measurements:" << endl;
 	outputRealTimeMeasurements(averages);
+
+	outputDistributionMeasurements(distributions);
 }
 
 
@@ -200,10 +222,33 @@ void outputResults(RealTimeMeasurements *worsts, RealTimeMeasurements *averages,
  *
 */
 int main() {
-	RealTimeMeasurements         *worsts               = new RealTimeMeasurements();
-	RealTimeMeasurements         *averages             = new RealTimeMeasurements();
-	RealTimeMeasurements         *numberOfMeasurements = new RealTimeMeasurements();
-	DistributionTimeMeasurements *distributions        = new DistributionTimeMeasurements();
-	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1000000000ll /* * 3600ll */ * 24ll);
+
+	RealTimeMeasurements         *worsts;
+	RealTimeMeasurements         *averages;
+	RealTimeMeasurements         *numberOfMeasurements;
+	DistributionTimeMeasurements *distributions;
+
+	cout << "Warming up for 5 seconds..." << endl << flush;
+	worsts               = new RealTimeMeasurements();
+	averages             = new RealTimeMeasurements();
+	numberOfMeasurements = new RealTimeMeasurements();
+	distributions        = new DistributionTimeMeasurements();
+	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1000000000ll * 5ll);
+	delete worsts;
+	delete averages;
+	delete numberOfMeasurements;
+	delete distributions;
+
+	unsigned long long numberOfSecondsToMeasure = /* 3600ll * */ 24ll;
+	cout << "Performing real measurements for up to " << numberOfSecondsToMeasure << " seconds or until a SIGTERM is received..." << endl << flush;
+	worsts               = new RealTimeMeasurements();
+	averages             = new RealTimeMeasurements();
+	numberOfMeasurements = new RealTimeMeasurements();
+	distributions        = new DistributionTimeMeasurements();
+	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1000000000ll  * numberOfSecondsToMeasure);
 	outputResults(worsts, averages, distributions);
+	delete worsts;
+	delete averages;
+	delete numberOfMeasurements;
+	delete distributions;
 }
