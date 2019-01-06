@@ -36,16 +36,26 @@ struct RealTimeMeasurements {
 
 };
 
-struct DistributionMeasurements {
+constexpr unsigned MAX_HANG_SECONDS                    = 3600;			// we are able to compute delays of up to this quantity, in seconds
+constexpr unsigned DISTRIBUTION_TIME_RESOLUTION_FACTOR = 1'000 * 1'000;	// from ns to whatever resolution. 1000 * 1000 leads to ms time resolution
+constexpr unsigned GAUSSIAN_MS_SLOTS                   = (1'000*1'000*1'000/DISTRIBUTION_TIME_RESOLUTION_FACTOR)*MAX_HANG_SECONDS; // ns / resolution * max_hang_secs
+/** This struct is used to track the distribution of measured values */
+struct DistributionTimeMeasurements {
 
-	unsigned long long 
+	unsigned long long gaussianMS[GAUSSIAN_MS_SLOTS];
+	unsigned           nGaussianMSOverflows; 
+
+	DistributionTimeMeasurements()
+			: gaussianMS{0}
+			: nGaussianMSOverflows(0) {}
 
 };
 
-void realTimeTestLoop(RealTimeMeasurements &worsts,
-	                  RealTimeMeasurements &averages,
-	                  RealTimeMeasurements &numberOfMeasurements,
-	                  unsigned long long measurementDurationNS) {
+void realTimeTestLoop(RealTimeMeasurements         &worsts,
+	                  RealTimeMeasurements         &averages,
+	                  RealTimeMeasurements         &numberOfMeasurements,
+	                  DistributionTimeMeasurements &distributions,
+	                  unsigned long long            measurementDurationNS) {
 	unsigned long long startTimeNS   = TimeMeasurements::getMonotonicRealTimeNS();
 	unsigned long long lastTimeNS    = startTimeNS;
 	unsigned long long currentTimeNS;
@@ -60,6 +70,10 @@ void realTimeTestLoop(RealTimeMeasurements &worsts,
 
 		currentTimeNS = TimeMeasurements::getMonotonicRealTimeNS();
 		unsigned long long elapsedTimeNS = currentTimeNS - lastTimeNS;
+
+
+		// compute time measurements
+		////////////////////////////
 
 #define COMPUTE_MEASUREMENTS(_var)                      \
 		/* Compute worst measurement */                 \
@@ -80,6 +94,17 @@ void realTimeTestLoop(RealTimeMeasurements &worsts,
 		COMPUTE_MEASUREMENTS(dayOfTheMonth[dayOfMonth]);
 
 #undef COMPUTE_MEASUREMENTS
+
+
+		// compute distribution measurements
+		////////////////////////////////////
+
+		unsigned scaledElapsedTime = elapsedTimeNS/DISTRIBUTION_TIME_RESOLUTION_FACTOR;
+		if (scaledElapsedTime >= GAUSSIAN_MS_SLOTS) {
+			distributions.nGaussianMSOverflows++;
+		} else {
+			distributions.gaussianMS[scaledElapsedTime]++;
+		}
 
 		lastTimeNS = currentTimeNS;
 
@@ -122,6 +147,6 @@ void outputResults(RealTimeMeasurements &worsts, RealTimeMeasurements &averages)
 int main() {
 	RealTimeMeasurements worsts;
 	RealTimeMeasurements averages;
-	realTimeTestLoop(worsts, averages, 1000000000ll * 3600ll * 24ll);
+	realTimeTestLoop(worsts, averages, 1000000000ll /* * 3600ll */ * 24ll);
 	outputResults(worsts, averages);
 }
