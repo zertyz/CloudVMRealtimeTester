@@ -111,6 +111,6 @@ void outputResults(RealTimeMeasurements &worsts, RealTimeMeasurements &averages)
 int main() {
 	RealTimeMeasurements worsts;
 	RealTimeMeasurements averages;
-	realTimeTestLoop(worsts, averages, 1000000000ll * 15ll);
+	realTimeTestLoop(worsts, averages, 1000000000ll * 3600ll * 24ll);
 	outputResults(worsts, averages);
 }
