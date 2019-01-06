@@ -36,6 +36,12 @@ struct RealTimeMeasurements {
 
 };
 
+struct DistributionMeasurements {
+
+	unsigned long long 
+
+};
+
 void realTimeTestLoop(RealTimeMeasurements &worsts,
 	                  RealTimeMeasurements &averages,
 	                  RealTimeMeasurements &numberOfMeasurements,
@@ -81,7 +87,7 @@ void realTimeTestLoop(RealTimeMeasurements &worsts,
 
 	// compute averages
 	for (unsigned i=0; i<HOURS_IN_A_DAY; i++) {
-		averages.hourOfAllDays[i] /= averages.numberOfMeasurements; 
+		averages.hourOfAllDays[i] /= numberOfMeasurements.hourOfAllDays[i];
 	}
 
 }
