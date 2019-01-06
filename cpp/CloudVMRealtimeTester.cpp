@@ -57,11 +57,29 @@ void traverseArray(unsigned long long *array, unsigned nElements, void (&callbac
 	}
 }
 
-#define TRAVERSE1D(_array, _xElements, _expression) \
-	for (unsigned x=0; x<_xElements; x++) {         \
-		auto &element = _array[x];                  \
-		_expression;                                \
-	}                                               \
+#define TRAVERSE1D(_1dArray, _xElements, _expression) \
+	for (unsigned x=0; x<_xElements; x++) {           \
+		auto &element = _1dArray[x];                  \
+		_expression;                                  \
+	}                                                 \
+
+#define TRAVERSE2D(_2dArray, _xElements, _yElements, _expression) \
+	for (unsigned x=0; x<_xElements; x++) {                       \
+		for (unsigned y=0; y<_yElements; y++) {                   \
+			auto &element = _2dArray[x][y];                       \
+		    _expression;                                          \
+		}                                                         \
+	}                                                             \
+
+#define TRAVERSE3D(_3dArray, _xElements, _yElements, _zElements, _expression) \
+	for (unsigned x=0; x<_xElements; x++) {                                   \
+		for (unsigned y=0; y<_yElements; y++) {                               \
+			for (unsigned z=0; z<_zElements; z++) {                           \
+				auto &element = _3dArray[x][y][z];                            \
+		    	_expression;                                                  \
+			}                                                                 \
+		}                                                                     \
+	}                                                                         \
 
 void realTimeTestLoop(RealTimeMeasurements         &worsts,
 	                  RealTimeMeasurements         &averages,
@@ -123,23 +141,42 @@ void realTimeTestLoop(RealTimeMeasurements         &worsts,
 	} while ((currentTimeNS - startTimeNS) < measurementDurationNS);
 
 	// compute averages
-	TRAVERSE1D(averages.hourOfAllDays,     HOURS_IN_A_DAY,      element /= numberOfMeasurements.hourOfAllDays[x]);
-	TRAVERSE1D(averages.minutesOfAllHours, MINUTES_IN_AN_HOUR,  element /= numberOfMeasurements.minutesOfAllHours[x]);
-	// TRAVERSE(averages.minutesOfEachHour[HOURS_IN_A_DAY][MINUTES_IN_AN_HOUR];
-	// TRAVERSE(averages.minutesOfEachHourOfEachDay[DAYS_IN_A_MONTH][HOURS_IN_A_DAY][MINUTES_IN_AN_HOUR];
-	// TRAVERSE(averages.hourOfAllDays[HOURS_IN_A_DAY];
-	// TRAVERSE(averages.hourOfEachDay[DAYS_IN_A_MONTH][HOURS_IN_A_DAY];
-	// TRAVERSE(averages.dayOfAllWeeks[DAYS_IN_A_WEEK];
-	// TRAVERSE(averages.dayOfEachWeek[WEEKS_IN_A_MONTH][DAYS_IN_A_WEEK];
-	// TRAVERSE(averages.dayOfTheMonth[DAYS_IN_A_MONTH];
+	TRAVERSE1D(averages.minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   element /= numberOfMeasurements.minutesOfAllHours[x]);
+	TRAVERSE2D(averages.minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR,                 element /= numberOfMeasurements.minutesOfEachHour[x][y]);
+	TRAVERSE3D(averages.minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, element /= numberOfMeasurements.minutesOfEachHourOfEachDay[x][y][z]);
+	TRAVERSE1D(averages.hourOfAllDays,              HOURS_IN_A_DAY,                                       element /= numberOfMeasurements.hourOfAllDays[x]);
+	TRAVERSE2D(averages.hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY,                     element /= numberOfMeasurements.hourOfEachDay[x][y]);
+	TRAVERSE1D(averages.dayOfAllWeeks,              DAYS_IN_A_WEEK,                                       element /= numberOfMeasurements.dayOfAllWeeks[x]);
+	TRAVERSE2D(averages.dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     element /= numberOfMeasurements.dayOfEachWeek[x][y]);
+	TRAVERSE1D(averages.dayOfTheMonth,              DAYS_IN_A_MONTH,                                      element /= numberOfMeasurements.dayOfTheMonth[x]);
 
 }
 
 void outputRealTimeMeasurements(RealTimeMeasurements &measurements) {
+
+	cout << "\tminutesOfAllHours:\n";
+	TRAVERSE1D(averages.minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   cout << "\t\t" << x << ": " << element << "ns\n");
+
+	cout << "\tminutesOfEachHour:\n";
+	TRAVERSE2D(averages.minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR,                 cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
+
+	cout << "\tminutesOfEachHourOfEachDay:\n";
+	TRAVERSE3D(averages.minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, cout << "\t\t(" << x << ", " << y << ", " << z << "): " << element << "ns\n");
+
 	cout << "\thourOfAllDays:\n";
-	for (unsigned i=0; i<HOURS_IN_A_DAY; i++) {
-		cout << "\t\t" << i << ": " << measurements.hourOfAllDays[i] << "ns\n";
-	}
+	TRAVERSE1D(averages.hourOfAllDays,              HOURS_IN_A_DAY,                                       cout << "\t\t" << x << ": " << element << "ns\n");
+
+	cout << "\thourOfEachDay:\n";
+	TRAVERSE2D(averages.hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
+
+	cout << "\tdayOfAllWeeks:\n";
+	TRAVERSE1D(averages.dayOfAllWeeks,              DAYS_IN_A_WEEK,                                       cout << "\t\t" << x << ": " << element << "ns\n");
+
+	cout << "\tdayOfEachWeek:\n";
+	TRAVERSE2D(averages.dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns\n");
+
+	cout << "\tdayOfTheMonth:\n";
+	TRAVERSE1D(averages.dayOfTheMonth,              DAYS_IN_A_MONTH,                                      cout << "\t\t" << x << ": " << element << "ns\n");
 }
 
 void outputResults(RealTimeMeasurements &worsts, RealTimeMeasurements &averages, DistributionTimeMeasurements &distributions) {
