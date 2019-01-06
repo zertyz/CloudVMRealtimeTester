@@ -13,10 +13,10 @@ This tool was designed to be left running for a couple of weeks on every (still 
 # The Output
 The following graphs are provided:
 
-    * Worst times per:
-        - Hour of day (total)
-        - Hour of (each) day
-        - Day of week (total)
-        - Day of (each) week
-        - Day of the month
-    * Average times, the same as above.
+* Worst times per:
+    - Hour of day (total)
+    - Hour of (each) day
+    - Day of week (total)
+    - Day of (each) week
+    - Day of the month
+* Average times, the same as above.
