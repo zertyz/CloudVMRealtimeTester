@@ -1,11 +1,23 @@
 #include <iostream>
 #include <fstream>
+#include <csignal>
 using namespace std;
 
 #include <BetterExceptions.h>
 #include <TimeMeasurements.h>
 using namespace mutua::cpputils;
 
+
+// the signal handling scheme: sigterm cause the measurements to stop and results to be dumped
+static bool abortMeasurements = false;
+void signalHandler(int signum) {
+	if ((signum == SIGTERM) || (signum == SIGINT)) {
+		cout << "SIGTERM received. Dumping results:" << endl;
+		abortMeasurements = true;
+	} else {
+		cout << "Unknown signal #" << signum << " received. Ignoring..." << endl;
+	}
+}
 
 constexpr unsigned MINUTES_IN_AN_HOUR = 60;
 constexpr unsigned HOURS_IN_A_DAY     = 24;
@@ -140,7 +152,9 @@ void realTimeTestLoop(RealTimeMeasurements         *worsts,
 
 		lastTimeNS = currentTimeNS;
 
-	} while ((currentTimeNS - startTimeNS) < measurementDurationNS);
+	} while ( !abortMeasurements && ((currentTimeNS - startTimeNS) < measurementDurationNS) );
+
+	cout << "Measurement completed after " << ((currentTimeNS - startTimeNS) / 1'000'000'000) << " seconds." << endl;
 
 	// compute averages
 	TRAVERSE1D(averages->minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   auto n = numberOfMeasurements->minutesOfAllHours[x];                if (n > 0) element /= n);
@@ -299,6 +313,10 @@ int main(int argc, char *argv[]) {
  		cout << endl;
  		return 1;
 	}
+
+	// register the signals & handling function
+	signal(SIGTERM, signalHandler);
+	signal(SIGINT,  signalHandler);
 
 	unsigned long long numberOfSecondsToMeasure = atoi(argv[1]);
 
