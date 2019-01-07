@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 using namespace std;
 
 #include <BetterExceptions.h>
@@ -42,11 +43,11 @@ constexpr unsigned long long GAUSSIAN_MS_SLOTS                   = (1'000*1'000*
 struct DistributionTimeMeasurements {
 
 	unsigned long long gaussianTimes[GAUSSIAN_MS_SLOTS];
-	unsigned           ngaussianTimesOverflows;
+	unsigned           nGaussianTimesOverflows;
 
 	DistributionTimeMeasurements()
 			: gaussianTimes{0}
-			, ngaussianTimesOverflows(0) {}
+			, nGaussianTimesOverflows(0) {}
 
 };
 
@@ -131,7 +132,7 @@ void realTimeTestLoop(RealTimeMeasurements         *worsts,
 
 		unsigned scaledElapsedTime = (unsigned)(elapsedTimeNS/DISTRIBUTION_TIME_RESOLUTION_FACTOR);
 		if (scaledElapsedTime >= GAUSSIAN_MS_SLOTS) {
-			distributions->ngaussianTimesOverflows++;
+			distributions->nGaussianTimesOverflows++;
 		} else {
 			distributions->gaussianTimes[scaledElapsedTime]++;
 		}
@@ -151,6 +152,65 @@ void realTimeTestLoop(RealTimeMeasurements         *worsts,
 	TRAVERSE2D(averages->dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     auto n = numberOfMeasurements->dayOfEachWeek[x][y];                 if (n > 0) element /= n);
 	TRAVERSE1D(averages->dayOfTheMonth,              DAYS_IN_A_MONTH,                                      auto n = numberOfMeasurements->dayOfTheMonth[x];                    if (n > 0) element /= n);
 
+}
+
+#define WRITE_1D_FILE(_fileName, _1dArray, _xElements) {                       \
+	cout << "Writing '"s + (_fileName) + "'..."s << flush;                     \
+	std::ofstream outfile(_fileName, std::ofstream::binary);                   \
+	TRAVERSE1D(_1dArray, _xElements, outfile << x << "\t" << element << endl); \
+	outfile.close();                                                           \
+	cout << " Done." << endl << flush;                                         \
+}
+
+#define WRITE_2D_FILE(_fileName, _2dArray, _xElements, _yElements) {                                     \
+	cout << "Writing '"s + (_fileName) + "'..."s << flush;                                               \
+	std::ofstream outfile(_fileName, std::ofstream::binary);                                             \
+	TRAVERSE2D(_2dArray, _xElements, _yElements, outfile << x << "\t" << y << "\t" << element << endl);  \
+	outfile.close();                                                                                     \
+	cout << " Done." << endl << flush;                                                                   \
+}
+
+void writeRealTimeMeasurements(string measurementName, RealTimeMeasurements *measurements) {
+
+	WRITE_1D_FILE(measurementName+"_minutesOfAllHours", measurements->minutesOfAllHours,          MINUTES_IN_AN_HOUR);
+	WRITE_2D_FILE(measurementName+"_minutesOfEachHour", measurements->minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR);
+
+	// cout << "\tminutesOfEachHourOfEachDay:" << endl;
+	// TRAVERSE3D(measurements->minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, cout << "\t\t(" << x << ", " << y << ", " << z << "): " << element << "ns" << endl);
+
+	WRITE_1D_FILE(measurementName+"_hourOfAllDays",     measurements->hourOfAllDays,              HOURS_IN_A_DAY);
+	WRITE_2D_FILE(measurementName+"_hourOfEachDay",     measurements->hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY);
+	WRITE_1D_FILE(measurementName+"_dayOfAllWeeks",     measurements->dayOfAllWeeks,              DAYS_IN_A_WEEK);
+	WRITE_2D_FILE(measurementName+"_dayOfEachWeek",     measurements->dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK);
+	WRITE_1D_FILE(measurementName+"_dayOfTheMonth",     measurements->dayOfTheMonth,              DAYS_IN_A_MONTH);
+}
+
+void writeDistributionMeasurements(DistributionTimeMeasurements *distributions) {
+
+	string gaussianTimeUnit = (DISTRIBUTION_TIME_RESOLUTION_FACTOR / 1000) == 1 ? "us" : "ms";
+
+	cout << "nGaussianTimesOverflows (over " << GAUSSIAN_MS_SLOTS << gaussianTimeUnit << "): " << distributions->nGaussianTimesOverflows << endl;
+
+	// find the last measured time in the gaussian distribution to avoid dumping a bunch of zeroes
+	unsigned lastGaussianSlot = GAUSSIAN_MS_SLOTS;
+	for (unsigned i=GAUSSIAN_MS_SLOTS-1; i>=0; i--) {
+		if (distributions->gaussianTimes[i] > 0) {
+			lastGaussianSlot = i+1;
+			break;
+		}
+	}
+
+	WRITE_1D_FILE("gaussianTimes", distributions->gaussianTimes, lastGaussianSlot);
+}
+
+void writeResults(RealTimeMeasurements *worsts, RealTimeMeasurements *averages, DistributionTimeMeasurements *distributions) {
+
+	cout << "Worst measurements:" << endl;
+	writeRealTimeMeasurements("worsts", worsts);
+	cout << "Average measurements:" << endl;
+	writeRealTimeMeasurements("averages", averages);
+
+	writeDistributionMeasurements(distributions);
 }
 
 void outputRealTimeMeasurements(RealTimeMeasurements *measurements) {
@@ -182,7 +242,7 @@ void outputRealTimeMeasurements(RealTimeMeasurements *measurements) {
 
 void outputDistributionMeasurements(DistributionTimeMeasurements *distributions) {
 	cout << "Gaussian Distribution per millisecond:" << endl;
-	cout << "\tngaussianTimesOverflows: " << distributions->ngaussianTimesOverflows << endl;
+	cout << "\tnGaussianTimesOverflows: " << distributions->nGaussianTimesOverflows << endl;
 
 	string gaussianTimeUnit = (DISTRIBUTION_TIME_RESOLUTION_FACTOR / 1000) == 1 ? "us" : "ms";
 
@@ -261,6 +321,7 @@ int main(int argc, char *argv[]) {
 	distributions        = new DistributionTimeMeasurements();
 	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1000000000ll  * numberOfSecondsToMeasure);
 	outputResults(worsts, averages, distributions);
+	writeResults(worsts, averages, distributions);
 	delete worsts;
 	delete averages;
 	delete numberOfMeasurements;
