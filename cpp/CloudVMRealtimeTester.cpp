@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <csignal>
+#include <cstring>
 using namespace std;
 
 #include <BetterExceptions.h>
@@ -36,34 +37,51 @@ struct RealTimeMeasurements {
 	unsigned long long dayOfEachWeek[WEEKS_IN_A_MONTH][DAYS_IN_A_WEEK];
 	unsigned long long dayOfTheMonth[DAYS_IN_A_MONTH];
 
-	RealTimeMeasurements()
-			: minutesOfAllHours{0}
-			, minutesOfEachHour{0}
-			, minutesOfEachHourOfEachDay{0}
-			, hourOfAllDays{0}
-			, hourOfEachDay{0}
-			, dayOfAllWeeks{0}
-			, dayOfEachWeek{0}
-			, dayOfTheMonth{0} {}
+	RealTimeMeasurements() {
+		zeroAll();
+	}
+
+	void zeroAll() {
+		memset(minutesOfAllHours,          0, sizeof minutesOfAllHours);
+		memset(minutesOfEachHour,          0, sizeof minutesOfEachHour);
+		memset(minutesOfEachHourOfEachDay, 0, sizeof minutesOfEachHourOfEachDay);
+		memset(hourOfAllDays,              0, sizeof hourOfAllDays);
+		memset(hourOfEachDay,              0, sizeof hourOfEachDay);
+		memset(dayOfAllWeeks,              0, sizeof dayOfAllWeeks);
+		memset(dayOfEachWeek,              0, sizeof dayOfEachWeek);
+		memset(dayOfTheMonth,              0, sizeof dayOfTheMonth);
+	}
 
 };
 
-constexpr unsigned long long MAX_HANG_SECONDS                    = 36;		// we are able to compute delays of up to this quantity, in seconds
-constexpr unsigned long long DISTRIBUTION_TIME_RESOLUTION_FACTOR = 1'000;	// from ns to whatever resolution. 1000 * 1000 leads to ms time resolution
-constexpr unsigned long long GAUSSIAN_MS_SLOTS                   = (1'000*1'000*1'000/DISTRIBUTION_TIME_RESOLUTION_FACTOR)*MAX_HANG_SECONDS; // ns / resolution * max_hang_secs
+// gaussian distribution module vars and their default values (may be overwriten by program arguments)
+float              MAX_HANG_SECONDS                   = 36.0f;		// we are able to compute delays of up to this quantity, in seconds
+unsigned long long DISTRIBUTION_TIME_PRECISION_FACTOR = 1'000;		// from ns to whatever resolution. 1000 * 1000 leads to ms time resolution
+#define            GAUSSIAN_SLOTS_FORMULA               ((unsigned)((1'000*1'000*1'000.f/(float)DISTRIBUTION_TIME_PRECISION_FACTOR)*MAX_HANG_SECONDS)) // to be used to recalculate 'GAUSSIAN_SLOTS'
+unsigned           GAUSSIAN_SLOTS                     = GAUSSIAN_SLOTS_FORMULA;
 /** This struct is used to track the distribution of measured values */
 struct DistributionTimeMeasurements {
 
-	unsigned long long gaussianTimes[GAUSSIAN_MS_SLOTS];
-	unsigned           nGaussianTimesOverflows;
+	unsigned long long* gaussianTimes;
+	unsigned            nGaussianTimesOverflows;
 
-	DistributionTimeMeasurements()
-			: gaussianTimes{0}
-			, nGaussianTimesOverflows(0) {}
+	DistributionTimeMeasurements() {
+		gaussianTimes           = new unsigned long long[GAUSSIAN_SLOTS];
+		zeroAll();
+	}
+
+	~DistributionTimeMeasurements() {
+		delete[] gaussianTimes;
+	}
+
+	void zeroAll() {
+		memset(gaussianTimes, 0, sizeof(unsigned long long) * GAUSSIAN_SLOTS);
+		nGaussianTimesOverflows = 0;
+	}
 
 };
 
-/** auxiliary function -- for each 'nElements' of 'array', iterate over it calling 'callback(&array[n])' */
+/** auxiliary function -- for each one of the 'nElements' of 'array', iterate over it calling 'callback(&array[n])' */
 void traverseArray(unsigned long long *array, unsigned nElements, void (&callback) (unsigned long long &element, unsigned n)) {
 	for (unsigned n=0; n<nElements; n++) {
 		callback(array[n], n);
@@ -98,7 +116,8 @@ void realTimeTestLoop(RealTimeMeasurements         *worsts,
 	                  RealTimeMeasurements         *averages,
 	                  RealTimeMeasurements         *numberOfMeasurements,
 	                  DistributionTimeMeasurements *distributions,
-	                  unsigned long long            measurementDurationNS) {
+	                  unsigned long long            measurementDurationNS,
+	                  bool                          verbose) {
 	unsigned long long startTimeNS   = TimeMeasurements::getMonotonicRealTimeNS();
 	unsigned long long lastTimeNS    = startTimeNS;
 	unsigned long long currentTimeNS;
@@ -142,8 +161,8 @@ void realTimeTestLoop(RealTimeMeasurements         *worsts,
 		// compute distribution measurements
 		////////////////////////////////////
 
-		unsigned scaledElapsedTime = (unsigned)(elapsedTimeNS/DISTRIBUTION_TIME_RESOLUTION_FACTOR);
-		if (scaledElapsedTime >= GAUSSIAN_MS_SLOTS) {
+		unsigned scaledElapsedTime = (unsigned)(elapsedTimeNS/DISTRIBUTION_TIME_PRECISION_FACTOR);
+		if (scaledElapsedTime >= GAUSSIAN_SLOTS) {
 			distributions->nGaussianTimesOverflows++;
 		} else {
 			distributions->gaussianTimes[scaledElapsedTime]++;
@@ -154,7 +173,9 @@ void realTimeTestLoop(RealTimeMeasurements         *worsts,
 
 	} while ( !abortMeasurements && ((currentTimeNS - startTimeNS) < measurementDurationNS) );
 
-	cout << "Measurement completed after " << ((currentTimeNS - startTimeNS) / 1'000'000'000) << " seconds." << endl;
+	if (verbose) {
+		cout << "Measurement completed after " << ((currentTimeNS - startTimeNS) / 1'000'000'000) << " seconds." << endl;
+	}
 
 	// compute averages
 	TRAVERSE1D(averages->minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   auto n = numberOfMeasurements->minutesOfAllHours[x];                if (n > 0) element /= n);
@@ -201,13 +222,29 @@ void writeRealTimeMeasurements(string measurementName, RealTimeMeasurements *mea
 
 void writeDistributionMeasurements(DistributionTimeMeasurements *distributions) {
 
-	string gaussianTimeUnit = (DISTRIBUTION_TIME_RESOLUTION_FACTOR / 1000) == 1 ? "us" : "ms";
+	string gaussianTimeUnit;
+	switch (DISTRIBUTION_TIME_PRECISION_FACTOR) {
+		case 1:
+			gaussianTimeUnit = "ns";
+			break;
+		case 1'000:
+			gaussianTimeUnit = "µs";
+			break;
+		case 1'000'000:
+			gaussianTimeUnit = "ms";
+			break;
+		case 1'000'000'000:
+			gaussianTimeUnit = "s";
+			break;
+		default:
+			gaussianTimeUnit = "(unknown time unit -- factor = " + std::to_string(DISTRIBUTION_TIME_PRECISION_FACTOR) + ")";
+	}
 
-	cout << "nGaussianTimesOverflows (over " << GAUSSIAN_MS_SLOTS << gaussianTimeUnit << "): " << distributions->nGaussianTimesOverflows << endl;
+	cout << "nGaussianTimesOverflows (over " << GAUSSIAN_SLOTS << gaussianTimeUnit << "): " << distributions->nGaussianTimesOverflows << endl;
 
 	// find the last measured time in the gaussian distribution to avoid dumping a bunch of zeroes
-	unsigned lastGaussianSlot = GAUSSIAN_MS_SLOTS;
-	for (unsigned i=GAUSSIAN_MS_SLOTS-1; i>=0; i--) {
+	unsigned lastGaussianSlot = GAUSSIAN_SLOTS;
+	for (unsigned i=GAUSSIAN_SLOTS-1; i>=0; i--) {
 		if (distributions->gaussianTimes[i] > 0) {
 			lastGaussianSlot = i+1;
 			break;
@@ -225,62 +262,6 @@ void writeResults(RealTimeMeasurements *worsts, RealTimeMeasurements *averages, 
 	writeRealTimeMeasurements("averages", averages);
 
 	writeDistributionMeasurements(distributions);
-}
-
-void outputRealTimeMeasurements(RealTimeMeasurements *measurements) {
-
-	cout << "\tminutesOfAllHours:" << endl;
-	TRAVERSE1D(measurements->minutesOfAllHours,          MINUTES_IN_AN_HOUR,                                   cout << "\t\t" << x << ": " << element << "ns" << endl);
-
-	cout << "\tminutesOfEachHour:" << endl;
-	TRAVERSE2D(measurements->minutesOfEachHour,          HOURS_IN_A_DAY,   MINUTES_IN_AN_HOUR,                 cout << "\t\t(" << x << ", " << y << "): " << element << "ns" << endl);
-
-	cout << "\tminutesOfEachHourOfEachDay:" << endl;
-	TRAVERSE3D(measurements->minutesOfEachHourOfEachDay, DAYS_IN_A_MONTH,  HOURS_IN_A_DAY, MINUTES_IN_AN_HOUR, cout << "\t\t(" << x << ", " << y << ", " << z << "): " << element << "ns" << endl);
-
-	cout << "\thourOfAllDays:" << endl;
-	TRAVERSE1D(measurements->hourOfAllDays,              HOURS_IN_A_DAY,                                       cout << "\t\t" << x << ": " << element << "ns" << endl);
-
-	cout << "\thourOfEachDay:" << endl;
-	TRAVERSE2D(measurements->hourOfEachDay,              DAYS_IN_A_MONTH,  HOURS_IN_A_DAY,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns" << endl);
-
-	cout << "\tdayOfAllWeeks:" << endl;
-	TRAVERSE1D(measurements->dayOfAllWeeks,              DAYS_IN_A_WEEK,                                       cout << "\t\t" << x << ": " << element << "ns" << endl);
-
-	cout << "\tdayOfEachWeek:" << endl;
-	TRAVERSE2D(measurements->dayOfEachWeek,              WEEKS_IN_A_MONTH, DAYS_IN_A_WEEK,                     cout << "\t\t(" << x << ", " << y << "): " << element << "ns" << endl);
-
-	cout << "\tdayOfTheMonth:" << endl;
-	TRAVERSE1D(measurements->dayOfTheMonth,              DAYS_IN_A_MONTH,                                      cout << "\t\t" << x << ": " << element << "ns" << endl);
-}
-
-void outputDistributionMeasurements(DistributionTimeMeasurements *distributions) {
-	cout << "Gaussian Distribution per millisecond:" << endl;
-	cout << "\tnGaussianTimesOverflows: " << distributions->nGaussianTimesOverflows << endl;
-
-	string gaussianTimeUnit = (DISTRIBUTION_TIME_RESOLUTION_FACTOR / 1000) == 1 ? "us" : "ms";
-
-	// find the last measured time in the gaussian distribution to avoid dumping a bunch of zeroes
-	unsigned lastGaussianSlot = GAUSSIAN_MS_SLOTS;
-	for (unsigned i=GAUSSIAN_MS_SLOTS-1; i>=0; i--) {
-		if (distributions->gaussianTimes[i] > 0) {
-			lastGaussianSlot = i+1;
-			break;
-		}
-	}
-
-	cout << "\tgaussianTimes:" << endl;
-	TRAVERSE1D(distributions->gaussianTimes, lastGaussianSlot, cout << "\t\t" << x << gaussianTimeUnit << ": " << element << endl);
-}
-
-void outputResults(RealTimeMeasurements *worsts, RealTimeMeasurements *averages, DistributionTimeMeasurements *distributions) {
-
-	cout << "Worst measurements:" << endl;
-	outputRealTimeMeasurements(worsts);
-	cout << "Average measurements:" << endl;
-	outputRealTimeMeasurements(averages);
-
-	outputDistributionMeasurements(distributions);
 }
 
 
@@ -307,9 +288,22 @@ int main(int argc, char *argv[]) {
  		cout << "reporting if they may be trusted to execute hard, firm or soft Real-Time applications." << endl;
  		cout << endl;
  		cout << "Usage:" << endl;
-		cout << "\tCloudVMRealtimeTester <seconds to measure>" << endl;
+		cout << "\tsudo sync; sudo nice -n -20 CloudVMRealtimeTester <seconds to measure> [time precision] [seconds to track on distribution accounting]" << endl;
 		cout << "where:" << endl;
 		cout << "\t'seconds to measure' is the number of seconds to do busy waiting measurements" << endl;
+		cout << "\t'time precision' is optional and should one of: ns, µs (default), ms or s" << endl;
+		cout << "\t'seconds to track on distribution accounting' is used to generate the gaussian distribution of the real-time" << endl;
+		cout << "\t                                              offenses. On hard real-time, every loop should take the same time to" << endl;
+		cout << "\t                                              complete, leading all measurements to fall into the same gaussian" << endl;
+		cout << "\t                                              slot. The system will be less suitable for hard real-time purposes" << endl;
+		cout << "\t                                              when more slots are needed. This option is used to allocate the" << endl;
+		cout << "\t                                              necessarys slots to track delays up to that given number of seconds." << endl;
+		cout << "\t                                              Use with care, observing your choice for 'time precision', since" << endl;
+		cout << "\t                                              the memory needed is:" << endl;
+		cout << "\t                                                - sizeof int * 1e9 * seconds to track for ns precision (~4 GiB/s)," << endl;
+		cout << "\t                                                - sizeof int * 1e6 * seconds to track for µs precision (~4 MiB/s)," << endl;
+		cout << "\t                                                - sizeof int * 1e3 * seconds to track for ms precision (~4 KiB/s)," << endl;
+		cout << "\t                                                - sizeof int * 1e0 * seconds to track for second precision (~4b/s)." << endl;
  		cout << endl;
  		return 1;
 	}
@@ -318,28 +312,61 @@ int main(int argc, char *argv[]) {
 	signal(SIGTERM, signalHandler);
 	signal(SIGINT,  signalHandler);
 
+	// parameter gathering
+	//////////////////////
+
 	unsigned long long numberOfSecondsToMeasure = atoi(argv[1]);
+	unsigned long long timePrecisionFactor = 1'000'000;	// defaults to µs
+	if (argc > 2) {
+		// use the supplied precision
+		if (strcmp(argv[2], "ns") == 0) {
+			DISTRIBUTION_TIME_PRECISION_FACTOR = 1;
+			MAX_HANG_SECONDS = 0.2f;
+		} else if (strcmp(argv[2], "µs") == 0) {
+			DISTRIBUTION_TIME_PRECISION_FACTOR = 1'000;
+			MAX_HANG_SECONDS = 36;
+		} else if (strcmp(argv[2], "ms") == 0) {
+			DISTRIBUTION_TIME_PRECISION_FACTOR = 1'000'000;
+			MAX_HANG_SECONDS = 60;
+		} else if (strcmp(argv[2], "s") == 0) {
+			DISTRIBUTION_TIME_PRECISION_FACTOR = 1'000'000'000;
+			MAX_HANG_SECONDS = 3600;
+		} else {
+			cout << "Wrong value '"+std::string(argv[2])+"' for 'time precision' argument. Please consult usage.";
+			return 1;
+		}
+	}
+	if (argc > 3) {
+		MAX_HANG_SECONDS = atof(argv[3]);
+	}
 
+	// recalculate the needed gaussian slots
+	GAUSSIAN_SLOTS = GAUSSIAN_SLOTS_FORMULA;
 
-	cout << "Warming up for 5 seconds..." << endl << flush;
+	cout << "CloudVMRealtimeTester: Starting hard real-time measurements with parameters:" << endl;
+	cout << "\t'seconds to measure'                                 : " + std::to_string(numberOfSecondsToMeasure) << endl;
+	cout << "\tmax measurements per second ('time precision' factor): " + std::to_string(DISTRIBUTION_TIME_PRECISION_FACTOR) << endl;
+	cout << "\t'seconds to track on distribution accounting'        : " + std::to_string(MAX_HANG_SECONDS) + " ("+std::to_string(GAUSSIAN_SLOTS)+" gaussian slots)"<< endl;
+	cout << endl;
+
+	cout << "Warming up for 5 seconds." << endl;
+	cout << "Then, performing real measurements for up to " << numberOfSecondsToMeasure << " seconds or until a SIGTERM is received..." << endl << flush;
 	worsts               = new RealTimeMeasurements();
 	averages             = new RealTimeMeasurements();
 	numberOfMeasurements = new RealTimeMeasurements();
 	distributions        = new DistributionTimeMeasurements();
-	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1000000000ll * 5ll);
-	delete worsts;
-	delete averages;
-	delete numberOfMeasurements;
-	delete distributions;
+	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1'000'000'000ll*5ll, false);
+	worsts->zeroAll();
+	averages->zeroAll();
+	numberOfMeasurements->zeroAll();
+	distributions->zeroAll();
 
-	cout << "Performing real measurements for up to " << numberOfSecondsToMeasure << " seconds or until a SIGTERM is received..." << endl << flush;
-	worsts               = new RealTimeMeasurements();
-	averages             = new RealTimeMeasurements();
-	numberOfMeasurements = new RealTimeMeasurements();
-	distributions        = new DistributionTimeMeasurements();
-	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1000000000ll  * numberOfSecondsToMeasure);
-	outputResults(worsts, averages, distributions);
+	// the real test
+	realTimeTestLoop(worsts, averages, numberOfMeasurements, distributions, 1'000'000'000ll*numberOfSecondsToMeasure, true);
+
+	// results
 	writeResults(worsts, averages, distributions);
+
 	delete worsts;
 	delete averages;
 	delete numberOfMeasurements;
